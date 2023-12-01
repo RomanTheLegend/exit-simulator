@@ -10,12 +10,17 @@
 #include "datapoint.h"
 #include "common.h"
 
-#define SLOPE_LEN 9
+#define SLOPE_LEN 4
 #define SLEEP_MULTIPLIER 1
 
 class gps
 {
 public:
+    std::string getTimeString() const
+    {
+
+        return timestring_;
+    }
     long long getTime() const
     {
 
@@ -100,6 +105,7 @@ public:
         return numSV_;
     }
 
+    std::string timestring_;
     long long time_;
     double lat_;
     double lon_;
@@ -180,6 +186,7 @@ private:
 
             // Assuming the format of the CSV file is consistent
             std::getline(iss, token, ',');
+            dp.timestring_ = token;
             dp.time_ = convertToUnixEpoch(token);
 
             std::getline(iss, token, ',');
@@ -271,7 +278,6 @@ DataPoint runStartDp;
 bool alreadyFalling = false;
 long long startTs = 0;
 long long exitTs;
-// double slope;
 DataPoint timeseries[SLOPE_LEN];
 
 
@@ -296,11 +302,12 @@ double getSlope()
 
     double slope = (sumxy - sumx * sumy / n) / (sumxx - sumx * sumx / n);
 
-    std::cout << "Slope: " << slope << std::endl;
+    std::cout << " | Slope: " << slope;
 
     return slope;
-    // return 0.0f;
+
 }
+
 
 void addElement(DataPoint value, DataPoint array[], int size)
 {
@@ -317,40 +324,39 @@ bool isFreefall()
         return true;
 
     // Get interpolation coefficient
-    timeseries[4].az = getSlope();
+    timeseries[SLOPE_LEN - 1].az = getSlope();
     double g = A_GRAVITY;
 
-    double a = (g - timeseries[3].velD) / (timeseries[4].velD - timeseries[3].velD);
+int p = SLOPE_LEN -2, c = SLOPE_LEN -1;
 
+    double a = (g - timeseries[p].velD) / (timeseries[c].velD - timeseries[p].velD);
+    std::cout << " | a: " << a << std::endl;
     // Check vertical speed
     if (a < 0 || 1 < a)
         return false;
 
     // Check accuracy
-    double vAcc = timeseries[3].vAcc + a * (timeseries[4].vAcc - timeseries[3].vAcc);
+    double vAcc = timeseries[p].vAcc + a * (timeseries[c].vAcc - timeseries[p].vAcc);
     if (vAcc > 10)
         return false;
 
     // Check acceleration
-    double az = timeseries[3].az + a * (timeseries[4].az - timeseries[3].az);
+    double az = timeseries[p].az + a * (timeseries[c].az - timeseries[p].az);
     if (az < g / 5.)
         return false;
 
-    exitTs = (long long)(timeseries[3].ts + a * (timeseries[4].ts - timeseries[3].ts) - g / az) ;
-    // alreadyFalling = true;
+    exitTs = (long long)(timeseries[p].ts + a * (timeseries[c].ts - timeseries[p].ts) - g / az*1000.) ;
     return true;
 }
 
 int main()
 {
-    CSVDataReader dataReader("data2.csv");
+    CSVDataReader dataReader("data4.csv");
     dataReader.startReading();
 
     curDp = DataPoint();
     prevDp = DataPoint();
     int i = 0;
-
-    // std::this_thread::sleep_for(std::chrono::seconds(1));
 
     while (!dataReader.finishReading())
     {
@@ -374,17 +380,16 @@ int main()
             startTs = gps_.getTime();
         }
 
-        std::cout << "Time: " << gps_.getTime() << " | TS: " << curDp.t << " | Latitude: " << gps_.getLat() << " | Longitude: " << gps_.getLon() << " | HMSL: " << gps_.getHMSL() << " | VelN: " << gps_.getVelN() << " | VelE: " << gps_.getVelE() << " | VelD: " << gps_.getVelD() << " | HAcc: " << gps_.getHAcc() << " | VAcc: " << gps_.getVAcc() << " | SAcc: " << gps_.getSAcc() << " | Heading: " << gps_.getHeading() << " | CAcc: " << gps_.getCAcc() << " | GPSFix: " << gps_.getGPSFix() << " | NumSV: " << gps_.getNumSV() << std::endl;
+        // std::cout << "Time: " << gps_.getTime() << " | TS: " << curDp.t << " | Latitude: " << gps_.getLat() << " | Longitude: " << gps_.getLon() << " | HMSL: " << gps_.getHMSL() << " | VelN: " << gps_.getVelN() << " | VelE: " << gps_.getVelE() << " | VelD: " << gps_.getVelD() << " | HAcc: " << gps_.getHAcc() << " | VAcc: " << gps_.getVAcc() << " | SAcc: " << gps_.getSAcc() << " | Heading: " << gps_.getHeading() << " | CAcc: " << gps_.getCAcc() << " | GPSFix: " << gps_.getGPSFix() << " | NumSV: " << gps_.getNumSV() << std::endl;
+        std::cout << gps_.getTimeString() << " | Timestamp: " << gps_.getTime() << " | Delta t: " << curDp.t  << " | VelD: " << gps_.getVelD() << " | VAcc: " << gps_.getVAcc();
 
         if (i >= SLOPE_LEN && isFreefall())
         {
-            std::cout << "Falling!" << std::endl;
+            std::cout << "Falling! " << exitTs << std::endl;
+            return 0;
         }
 
         ++i;
-        // dataReader.markAsRead();
-        // std::cout << "====================================" << std::endl;
-        // std::this_thread::sleep_for(std::chrono::seconds(3));
     }
 
     return 0;
